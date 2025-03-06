@@ -1,0 +1,7 @@
+openai
+anthropic
+python-dotenv
+pandas
+ipykernel
+aiofiles
+tqdm
