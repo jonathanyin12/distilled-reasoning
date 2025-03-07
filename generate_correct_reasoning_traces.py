@@ -15,11 +15,7 @@ load_dotenv()
 
 # Constants
 GRADING_PROMPT = """
-You are an AI assistant tasked with grading a student's attempt at a problem. The user will provide you with the question itself, an attempt made by
-a student and the correct answer to the problem. Your job is to judge whether the attempt is correct by comparing it with the
-correct answer. If the expected solution concludes with a number or choice, there should be no ambiguity. If the expected
-solution involves going through the entire reasoning process, you should judge the attempt based on whether the reasoning
-process is correct with correct answer if helpful.
+You are an AI assistant tasked with grading a student's attempt at a problem. The user will provide you with the question itself, an attempt made by a student and the correct answer to the problem. Your job is to judge whether the attempt is correct by comparing it with the correct answer. If the expected solution concludes with a number or choice, there should be no ambiguity. If the expected solution involves going through the entire reasoning process, you should judge the attempt based on whether the reasoning process is correct with correct answer if helpful.
 
 The user will provide the attempt and the correct answer in the following format:
 
@@ -34,9 +30,28 @@ The user will provide the attempt and the correct answer in the following format
 
 Explain your reasoning and output True if the attempt is correct, False otherwise. Output in JSON format:
 {
+    "attempt_answer": "The answer to the question from the attempt. This should be a number or choice if applicable. If there are multiple parts to the question, attempt_answer should be a list of answers.",
     "explanation": "Your explanation here",
     "correct": True | False,
 }"""
+
+MATCHING_PROMPT = """You are an AI assistant tasked with determining if an answer is equivalent to any of the answers in a list of answers. If the answer is equivalent to any of the answers in the list, return the index of the matching answer. If it is not, return -1.
+
+
+The user will provide you with the list of answers and the answer you are trying to match in the following format:
+
+# List of answers
+{answers}
+
+# Answer to match
+{answer}
+
+Output in JSON format:
+{
+    "answer_matched": True | False,
+    "matching_answer_index": "The index (1-indexed) of the matching answer from the list of answers. If there is no matching answer, return -1.",
+}"""
+
 
 # Client configuration
 CLIENTS = {
@@ -49,8 +64,8 @@ CLIENTS = {
         api_key=os.getenv("FIREWORKS_API_KEY"),
         base_url="https://api.fireworks.ai/inference/v1",
     ),
-    "o3-mini": AsyncOpenAI(timeout=120),
 }
+OPENAI_CLIENT = AsyncOpenAI()
 
 
 # Response processing utilities
@@ -99,9 +114,40 @@ def process_claude_response(message) -> Tuple[str, str]:
 
 
 # Core functionality
+async def find_matching_answer(answers: list[str], attempt_answer: str):
+    """
+    Find the matching answer from a list of answers. If none of the answers match, return the attempt answer.
+    """
+    if len(answers) == 0:
+        return attempt_answer
+
+    response = await OPENAI_CLIENT.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": MATCHING_PROMPT,
+            },
+            {
+                "role": "user",
+                "content": "# List of answers\n"
+                + "\n".join([f"{i + 1}. {answer}" for i, answer in enumerate(answers)])
+                + f"\n\n# Answer to match\n{attempt_answer}",
+            },
+        ],
+        response_format={"type": "json_object"},
+    )
+    json_response = json.loads(response.choices[0].message.content)
+
+    if json_response["answer_matched"]:
+        return answers[json_response["matching_answer_index"] - 1]
+    else:
+        return attempt_answer
+
+
 async def verify_answer_correctness(
     question: str, attempt: str, solution: str
-) -> Tuple[bool, str]:
+) -> Tuple[bool, str, str]:
     """
     Verify the correctness of the answer.
 
@@ -113,8 +159,7 @@ async def verify_answer_correctness(
     Returns:
         A tuple containing the correctness of the answer and the explanation.
     """
-    client = CLIENTS["o3-mini"]
-    response = await client.chat.completions.create(
+    response = await OPENAI_CLIENT.chat.completions.create(
         model="o3-mini",
         messages=[
             {
@@ -129,7 +174,18 @@ async def verify_answer_correctness(
         response_format={"type": "json_object"},
     )
     json_response = json.loads(response.choices[0].message.content)
-    return json_response["correct"], json_response["explanation"]
+
+    # Ensure attempt_answer is a string
+    if isinstance(json_response["attempt_answer"], (int, float, bool)):
+        attempt_answer = str(json_response["attempt_answer"])
+    else:
+        attempt_answer = json.dumps(json_response["attempt_answer"])
+
+    return (
+        json_response["correct"],
+        json_response["explanation"],
+        attempt_answer,
+    )
 
 
 async def generate_response(
@@ -219,13 +275,14 @@ async def generate_verified_response(
     for attempt_num in range(max_attempts):
         try:
             reasoning, attempt = await generate_response(question, question_type, model)
-            is_correct, explanation = await verify_answer_correctness(
+            is_correct, explanation, attempt_answer = await verify_answer_correctness(
                 question, attempt, solution
             )
             responses.append(
                 {
                     "reasoning": reasoning,
                     "attempt": attempt,
+                    "attempt_answer": attempt_answer,
                     "is_correct": is_correct,
                     "explanation": explanation,
                 }
@@ -233,7 +290,7 @@ async def generate_verified_response(
 
             # If the answer is correct, return it immediately
             if is_correct:
-                return reasoning, attempt, is_correct, explanation
+                return reasoning, attempt, attempt_answer, is_correct, explanation
         except Exception as e:
             print(f"Attempt {attempt_num + 1} failed with error: {str(e)}")
             continue
@@ -244,15 +301,34 @@ async def generate_verified_response(
             f"Failed to generate any valid responses after {max_attempts} attempts"
         )
     else:
-        # TODO: Implement robust majority voting mechanism
-        # This requires extracting a numeric answer from the attempt and comparing it to other attempts
+        # Implement majority voting mechanism based on attempt_answer
+        answer_counts = {}
+        for response in responses:
+            answer = await find_matching_answer(
+                list(answer_counts.keys()), response["attempt_answer"]
+            )
+            if answer in answer_counts:
+                answer_counts[answer] += 1
+            else:
+                answer_counts[answer] = 1
 
-        response = responses[0]
-        return (
-            response["reasoning"],
-            response["attempt"],
-            response["is_correct"],
-            response["explanation"],
+        # Find the most common answer
+        majority_answer = max(answer_counts.items(), key=lambda x: x[1])[0]
+        print(
+            f"Used majority voting to get answer. Answers: {answer_counts}. Majority answer: {majority_answer}"
+        )
+        # Find the first response with the majority answer
+        for response in responses:
+            if response["attempt_answer"] == majority_answer:
+                return (
+                    response["reasoning"],
+                    response["attempt"],
+                    response["attempt_answer"],
+                    response["is_correct"],
+                    response["explanation"],
+                )
+        raise ValueError(
+            f"Failed to generate any valid responses after {max_attempts} attempts"
         )
 
 
@@ -264,6 +340,7 @@ async def save_result(
     question: str,
     reasoning: str,
     attempt: str,
+    attempt_answer: str,
     explanation: str,
     is_correct: bool,
     solution: str = "",
@@ -286,6 +363,7 @@ async def save_result(
                     metadata,
                     reasoning,
                     attempt,
+                    attempt_answer,
                     is_correct,
                     explanation,
                 ]
@@ -319,10 +397,11 @@ async def process_question(
             (
                 reasoning,
                 attempt,
+                attempt_answer,
                 is_correct,
                 explanation,
             ) = await generate_verified_response(
-                question, question_type, solution, model_name
+                question, question_type, solution, model_name, max_attempts=2
             )
 
             # Save the result to the CSV file with file lock
@@ -333,6 +412,7 @@ async def process_question(
                 question=question,
                 reasoning=reasoning,
                 attempt=attempt,
+                attempt_answer=attempt_answer,
                 explanation=explanation,
                 is_correct=is_correct,
                 solution=solution,
@@ -374,7 +454,7 @@ async def main(model_name: str, max_concurrent: int):
         async with aiofiles.open(output_file, "w") as f:
             # Include original columns plus new columns
             await f.write(
-                "index,solution,question,cot_type,source_type,metadata,reasoning,attempt,matches_solution,grading_explanation\n"
+                "index,solution,question,cot_type,source_type,metadata,reasoning,attempt,attempt_answer,matches_solution,grading_explanation\n"
             )
 
     df = pd.read_csv("s1k_questions.csv")
@@ -447,7 +527,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-concurrent",
         type=int,
-        default=5,
+        default=1,
         help="Maximum number of concurrent API calls",
     )
     args = parser.parse_args()
