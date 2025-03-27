@@ -20,6 +20,7 @@ async def process_question(
     output_file: str,
     file_lock: asyncio.Lock,
     api_semaphore: asyncio.Semaphore,
+    max_attempts: int,
 ) -> Tuple[int, bool]:
     """Process a single question with semaphore control."""
     async with api_semaphore:
@@ -36,6 +37,7 @@ async def process_question(
                 row["cot_type"],
                 row["solution"],
                 model_name,
+                max_attempts,
             )
 
             await save_result(
@@ -55,10 +57,10 @@ async def process_question(
             return index, False
 
 
-async def main(model_name: str, max_concurrent: int):
+async def main(model_name: str, max_concurrent: int, max_attempts: int):
     """Main function to process all questions."""
     os.makedirs("results", exist_ok=True)
-    output_file = f"results/s1k_{model_name}.csv"
+    output_file = f"results/s1k_{model_name}_{max_attempts}_attempts.csv"
 
     # Initialize or load existing progress
     processed_indices = set()
@@ -86,6 +88,7 @@ async def main(model_name: str, max_concurrent: int):
                 output_file,
                 lock,
                 semaphore,
+                max_attempts,
             )
         )
         for i, (_, row) in enumerate(df.iterrows())
@@ -115,7 +118,7 @@ async def update_progress(task, progress_bar):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Generate correct reasoning traces")
+    parser = argparse.ArgumentParser(description="Collect reasoning traces")
     parser.add_argument(
         "--model",
         type=str,
@@ -126,9 +129,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-concurrent",
         type=int,
-        default=1,
+        default=4,
         help="Maximum number of concurrent API calls",
+    )
+    parser.add_argument(
+        "--max-attempts",
+        type=int,
+        default=16,
+        help="Maximum number of attempts to generate a correct response",
     )
     args = parser.parse_args()
 
-    asyncio.run(main(args.model, args.max_concurrent))
+    asyncio.run(main(args.model, args.max_concurrent, args.max_attempts))

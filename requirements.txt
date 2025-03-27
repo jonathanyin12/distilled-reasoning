@@ -5,3 +5,5 @@ pandas
 ipykernel
 aiofiles
 tqdm
+transformers
+datasets

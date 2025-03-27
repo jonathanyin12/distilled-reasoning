@@ -2,7 +2,7 @@ import os
 
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
+from openai import AsyncAzureOpenAI, AsyncOpenAI
 
 load_dotenv()
 
@@ -21,11 +21,11 @@ The user will provide the attempt and the correct answer in the following format
 ## Correct answer
 {solution}
 
-Explain your reasoning and output True if the attempt is correct, False otherwise. Output in JSON format:
+Output the following in JSON format:
 {
     "attempt_answer": "The answer to the question from the attempt. This should be a number or choice if applicable. If there are multiple parts to the question, attempt_answer should be a list of answers.",
     "explanation": "Your explanation here",
-    "correct": True | False,
+    "correct": True | False, # Whether the attempt is correct
 }"""
 
 MATCHING_PROMPT = """You are an AI assistant tasked with determining if an answer is equivalent to any of the answers in a list of answers. If the answer is equivalent to any of the answers in the list, return the index of the matching answer. If it is not, return -1.
@@ -57,4 +57,7 @@ CLIENTS = {
     ),
 }
 
-OPENAI_CLIENT = AsyncOpenAI()
+OPENAI_CLIENT = AsyncAzureOpenAI(
+    api_version="2025-01-01-preview",
+    azure_endpoint="https://jonathan-research.openai.azure.com",
+)

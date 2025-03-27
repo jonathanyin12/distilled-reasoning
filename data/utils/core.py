@@ -47,7 +47,7 @@ async def verify_answer_correctness(
         solution: The correct answer to the question.
 
     Returns:
-        A tuple containing the correctness of the answer and the explanation.
+        A tuple containing the attempt answer, correctness of the answer, and the explanation.
     """
     response = await OPENAI_CLIENT.chat.completions.create(
         model="o3-mini",
@@ -62,6 +62,7 @@ async def verify_answer_correctness(
             },
         ],
         response_format={"type": "json_object"},
+        reasoning_effort="high",
     )
     json_response = json.loads(response.choices[0].message.content)
 
@@ -71,10 +72,13 @@ async def verify_answer_correctness(
     else:
         attempt_answer = json.dumps(json_response["attempt_answer"])
 
+    correct = json_response["correct"]
+    explanation = json_response["explanation"]
+
     return (
-        json_response["correct"],
-        json_response["explanation"],
         attempt_answer,
+        correct,
+        explanation,
     )
 
 
@@ -143,7 +147,7 @@ async def generate_response(
 
 
 async def generate_verified_response(
-    question: str, question_type: str, solution: str, model: str, max_attempts: int = 64
+    question: str, question_type: str, solution: str, model: str, max_attempts: int = 16
 ) -> Tuple[str, str, bool, str]:
     """
     Generate a correct response from the model.
@@ -165,9 +169,11 @@ async def generate_verified_response(
     for attempt_num in range(max_attempts):
         try:
             reasoning, attempt = await generate_response(question, question_type, model)
-            is_correct, explanation, attempt_answer = await verify_answer_correctness(
-                question, attempt, solution
-            )
+            (
+                attempt_answer,
+                is_correct,
+                explanation,
+            ) = await verify_answer_correctness(question, attempt, solution)
             responses.append(
                 {
                     "reasoning": reasoning,
