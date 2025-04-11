@@ -7,42 +7,40 @@ from openai import AsyncAzureOpenAI, AsyncOpenAI
 load_dotenv()
 
 # Prompts
-GRADING_PROMPT = """
-You are an AI assistant tasked with grading a student's attempt at a problem. The user will provide you with the question itself, an attempt made by a student and the correct answer to the problem. Your job is to judge whether the attempt is correct by comparing it with the correct answer. If the expected solution concludes with a number or choice, there should be no ambiguity. If the expected solution involves going through the entire reasoning process, you should judge the attempt based on whether the reasoning process is correct with correct answer if helpful.
+ANSWER_EXTRACTION_PROMPT = """You are an AI assistant tasked with extracting the answer from a student's attempt at a problem. 
 
-The user will provide the attempt and the correct answer in the following format:
+The user will provide you with their attempt at a problem in the following format:
 
-# Problem
-{problem}
-
-## Attempt
+# Attempt
 {attempt}
 
-## Correct answer
-{solution}
+Your job is to extract the answer from the attempt. Typically the answer will be boxed.
+
 
 Output the following in JSON format:
 {
-    "attempt_answer": "The answer to the question from the attempt. This should be a number or choice if applicable. If there are multiple parts to the question, attempt_answer should be a list of answers.",
-    "explanation": "Your explanation here",
-    "correct": True | False, # Whether the attempt is correct
+    "extracted_answer": <the extracted answer>
 }"""
 
-MATCHING_PROMPT = """You are an AI assistant tasked with determining if an answer is equivalent to any of the answers in a list of answers. If the answer is equivalent to any of the answers in the list, return the index of the matching answer. If it is not, return -1.
 
-The user will provide you with the list of answers and the answer you are trying to match in the following format:
+GRADING_PROMPT = """You are an AI assistant tasked with grading a student's answer to a question. Your job is to judge whether the attempt is correct by comparing it with the correct answer.
 
-# List of answers
-{answers}
+The user will provide the question, the student's answer and the correct answer in the following format:
 
-# Answer to match
+# Question
+{question}
+
+# Correct answer
 {answer}
 
-Output in JSON format:
+# Student's answer
+{attempt}
+
+Output your response in JSON format:
 {
-    "answer_matched": True | False,
-    "matching_answer_index": "The index (1-indexed) of the matching answer from the list of answers. If there is no matching answer, return -1.",
+    "correct": <boolean indicating if the student's answer is correct>
 }"""
+
 
 # Client configuration
 CLIENTS = {
