@@ -37,14 +37,15 @@ async def find_first_correct_solution(question, answer, reasoning):
                 last_added_index = (
                     i  # Update the index of the last added/updated excerpt
                 )
-
     # print(
     #     f"Found {len(excerpts)} potential first correct solution excerpts after merging"
     # )
-
-    index = await choose_first_correct_solution(
-        question, answer, reasoning, location, excerpts
-    )
+    if len(excerpts) == 1:
+        index = 0
+    else:
+        index = await choose_first_correct_solution(
+            question, answer, reasoning, location, excerpts
+        )
     excerpt = excerpts[index]
     sentence_index = excerpt_to_sentence_index[excerpt]
 
@@ -83,6 +84,12 @@ async def main(csv_path, save_path, max_concurrent):
     else:
         df = pd.read_csv(csv_path)
 
+        # Add a 'First Correct Solution' column if it doesn't exist
+        if "First Correct Solution" not in df.columns:
+            df["First Correct Solution"] = None
+
+            print("Added 'First Correct Solution' column to the dataframe")
+
     # Create a lock for thread-safe dataframe updates
     df_lock = asyncio.Lock()
     # Create a semaphore to rate limit concurrent API calls
@@ -93,7 +100,7 @@ async def main(csv_path, save_path, max_concurrent):
         async with semaphore:
             fcs = await find_first_correct_solution(
                 question=row["Question"],
-                answer=row["Answer"],
+                answer=str(int(row["Answer Attempt"])),
                 reasoning=row["Reasoning"],
             )
 
@@ -110,10 +117,13 @@ async def main(csv_path, save_path, max_concurrent):
     # Create tasks for all rows we want to process
     rows_to_process = []
     for i, row in df.iterrows():
-        if not row["Correct"] or not pd.isna(row["First Correct Solution"]):
+        # Convert 'Correct' to boolean if it's not already, and skip if not correct or already processed
+        # correct = row["Correct"]
+        # if isinstance(correct, str):
+        #     correct = correct.lower() == "true"
+        if not pd.isna(row["First Correct Solution"]):
             continue
-        if i > 20:
-            break
+
         rows_to_process.append((i, row))
 
     # Process all tasks concurrently

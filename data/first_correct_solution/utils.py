@@ -114,7 +114,7 @@ def get_context(text, sentence, context_length=1000):
 
 
 async def describe_first_correct_solution_location(question, answer, reasoning):
-    prompt = f"""You are an AI assistant tasked with determining when the student reaches the correct answer in their reasoning process for the first time.
+    prompt = f"""You are an AI assistant tasked with finding the first occurence of the correct answer in a student's reasoning process.
 
 Here is the problem:
 {question}
@@ -126,7 +126,7 @@ Here is the student's full reasoning process:
 {reasoning}
 
 
-You goal is to describe where in the student's reasoning process they first reached the correct answer.
+Your goal is to describe where in the student's reasoning process they first reached the correct answer.
 - They likely checked their work after they first reached the correct answer. However, only consider the very first time the correct answer is proposed as the answer to the question(i.e. before they started checking their work).
 
 Provide direct quotes from the reasoning process to help describe where the correct answer first appears.
@@ -134,7 +134,7 @@ Provide direct quotes from the reasoning process to help describe where the corr
 
 Output a JSON object with the following field:
 {{  
-    "response": <where in the reasoning process the correct answer first appears>,
+    "description": <Description of when the student first reaches the correct answer>,
 }}"""
 
     messages = [
@@ -142,13 +142,15 @@ Output a JSON object with the following field:
     ]
 
     response = await client.chat.completions.create(
-        model="o3-mini",
-        reasoning_effort="high",
+        # model="o3-mini",
+        # reasoning_effort="high",
+        model="gpt-4o",
+        temperature=0.0,
         messages=messages,
         response_format={"type": "json_object"},
     )
     output_data = json.loads(response.choices[0].message.content)
-    return output_data["response"]
+    return output_data["description"]
 
 
 async def choose_first_correct_solution(
@@ -157,7 +159,7 @@ async def choose_first_correct_solution(
     formatted_excerpts = "\n\n".join(
         [f"{i + 1}. {excerpt}" for i, excerpt in enumerate(excerpts)]
     )
-    prompt = f"""You are an AI assistant tasked with finding the first time the student reaches the correct answer in their reasoning process.
+    prompt = f"""You are an AI assistant tasked with finding the first time the student reaches the correct answer.
 
 Here is the problem:
 {question}
@@ -166,26 +168,26 @@ Here is the correct answer:
 {answer}
 
 
-Here is the student's full reasoning process:
+Here is the student's thought process:
 {reasoning}
 
 
-Below, you are given a number of excerpts taken from the student's full reasoning process. They are ordered by when they appear in the student's reasoning process. One of the excerpts contains the first time the student reaches the correct answer. Your job is to determine which excerpt it is. 
+Below, you are given a number of excerpts from the student's thought process. They are ordered by when they occured. One of the excerpts contains the first time the student reaches the correct answer. Your job is to determine which excerpt it is. 
 
 Here are the excepts:
 {formatted_excerpts}
 
 
-
 Here is a description of the location of the first correct answer:
 {location}
+
 
 Reference the description to determine which excerpt contains the first correct answer. The correct excerpt contains the correct answer in the last sentence of the excerpt.
 
 
 Output a json object with the following field:
 {{
-    "excerpt_index": <1-indexed index of the excerpt that contains the first correct solution>
+    "excerpt_index": <1-indexed index of the excerpt that contains the first correct solution, must be between 1 and {len(excerpts)}>,
 }}
 """
     messages = [
@@ -203,6 +205,11 @@ Output a json object with the following field:
     )
     output_data = json.loads(response.choices[0].message.content)
     index = int(output_data["excerpt_index"]) - 1
+    if index < 0 or index >= len(excerpts):
+        print(f"Invalid excerpt index: {index} out of {len(excerpts)}")
+        return await choose_first_correct_solution(
+            question, answer, reasoning, location, excerpts
+        )
 
     return index
 
@@ -213,7 +220,7 @@ async def choose_first_correct_solution_sentence(
     formatted_sentences = "\n\n".join(
         [f"{i + 1}. {sentence}" for i, sentence in enumerate(sentences)]
     )
-    prompt = f"""You are an AI assistant tasked with determining when a student reached the correct answer in their reasoning process.
+    prompt = f"""You are an AI assistant tasked with determining when a student reached the correct answer.
 
 Here is the problem:
 {question}
@@ -221,7 +228,7 @@ Here is the problem:
 Here is the correct answer:
 {answer}
 
-Here is the student's full reasoning process:
+Here is the student's thought process:
 {reasoning}
 
 
@@ -240,7 +247,6 @@ The student must explicitly propose the correct answer for it to be considered a
 
 Output a json object with the following fields:
 {{
-    "reasoning": <Reasoning about which the sentence is the first correct answer>,
     "sentence_index": <1-indexed index of the sentence, must be between 1 and {len(sentences)}>
 }}
 """

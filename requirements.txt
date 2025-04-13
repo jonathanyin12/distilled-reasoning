@@ -7,3 +7,6 @@ aiofiles
 tqdm
 transformers
 datasets
+ipywidgets
+seaborn
+matplotlib
