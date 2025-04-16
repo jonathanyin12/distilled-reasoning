@@ -18,6 +18,7 @@ from utils.constants import (
 )
 from utils.response_processing import (
     process_claude_response,
+    process_grok_response,
     process_think_tagged_output,
 )
 
@@ -84,13 +85,7 @@ async def extract_answer(attempt: str) -> str:
     json_response = json.loads(response.choices[0].message.content)
     extracted_answer = json_response["extracted_answer"]
 
-    extracted_answer = str(extracted_answer)
-
-    # Remove commas, spaces, and other formatting characters
-    extracted_answer = extracted_answer.replace(",", "").strip()
-
-    # Remove any surrounding characters like brackets, quotes, etc.
-    extracted_answer = extracted_answer.strip("[](){}<>\"'")
+    extracted_answer = str(extracted_answer).strip()
 
     return extracted_answer
 
@@ -117,6 +112,11 @@ async def generate_response(question: str, model: str) -> Tuple[str, str]:
         question = (
             question
             + "\n\nPlease reason step by step, and put your final answer within \boxed{}."
+        )
+    elif "grok-3-mini" in model:
+        question = (
+            question
+            + "\n\nPlease reason step by step, and put your final answer within \boxed{}. Your final answer should not contain leading zeros."
         )
 
     match model:
@@ -153,13 +153,36 @@ async def generate_response(question: str, model: str) -> Tuple[str, str]:
                 model="accounts/fireworks/models/qwq-32b",
             )
             return process_think_tagged_output(response.choices[0].message.content)
-
+        case "grok-3-mini-low":
+            response = await client.chat.completions.create(
+                messages=[{"role": "user", "content": question}],
+                reasoning_effort="low",
+                model="grok-3-mini",
+                max_completion_tokens=32768,
+            )
+            if response.choices[0].finish_reason == "length":
+                raise ValueError("Terminated due to length limit")
+            return process_grok_response(response)
+        case "grok-3-mini-high":
+            response = await client.chat.completions.create(
+                messages=[{"role": "user", "content": question}],
+                reasoning_effort="high",
+                model="grok-3-mini",
+                max_completion_tokens=32768,
+            )
+            if response.choices[0].finish_reason == "length":
+                raise ValueError("Terminated due to length limit")
+            return process_grok_response(response)
         case _:
             raise ValueError(f"Unsupported model type: {model}")
 
 
 async def generate_correct_response(
-    question: str, answer: str, model: str, max_attempts: int = 16
+    question: str,
+    answer: str,
+    model: str,
+    max_attempts: int = 16,
+    majority_voting: bool = False,
 ) -> Tuple[str, str, bool, str]:
     """
     Generate a correct response from the model.
@@ -196,6 +219,10 @@ async def generate_correct_response(
             # If the answer is correct, return it immediately
             if correct:
                 return reasoning, attempt, answer_attempt, correct
+            else:
+                print(
+                    f"Attempt {attempt_num + 1} failed. Correct answer: {answer}. Attempted answer: {answer_attempt}"
+                )
         except Exception as e:
             print(f"Attempt {attempt_num + 1} failed with error: {str(e)}")
             continue
@@ -204,6 +231,10 @@ async def generate_correct_response(
     if not responses:
         raise ValueError(
             f"Failed to generate any valid responses after {max_attempts} attempts"
+        )
+    elif not majority_voting:
+        raise ValueError(
+            f"Failed to generate any correct responses after {max_attempts} attempts"
         )
     else:
         # Implement majority voting mechanism based on attempt_answer
@@ -234,13 +265,14 @@ async def process_question(
     file_lock: asyncio.Lock,
     api_semaphore: asyncio.Semaphore,
     max_attempts: int,
+    majority_voting: bool,
 ) -> bool:
     """Process a single question with semaphore control."""
     async with api_semaphore:
         try:
             tqdm.write(f"Processing question {row['ID']}...")
             # Sleep for a random time between 1 and 10 seconds to avoid rate limiting on request rate
-            await asyncio.sleep(random() * 10)
+            await asyncio.sleep(random() * 20)
             (
                 reasoning,
                 solution_attempt,
@@ -251,6 +283,7 @@ async def process_question(
                 row["Answer"],
                 model_name,
                 max_attempts,
+                majority_voting,
             )
 
             async with file_lock:  # Only one task can write at a time
@@ -281,10 +314,15 @@ async def process_question(
             return False
 
 
-async def main(model_name: str, max_concurrent: int, max_attempts: int):
+async def main(
+    model_name: str,
+    max_concurrent: int,
+    max_attempts: int,
+    majority_voting: bool,
+):
     """Main function to process all questions."""
     os.makedirs("results", exist_ok=True)
-    output_file = f"results/aime_1983_2023_{model_name}_traces.csv"
+    output_file = f"aime_1983_2023_{model_name}_traces.csv"
 
     # Initialize or load existing progress
     processed_indices = set()
@@ -299,14 +337,16 @@ async def main(model_name: str, max_concurrent: int, max_attempts: int):
         async with aiofiles.open(output_file, "w") as f:
             await f.write(headers)
 
-    df = pd.read_csv(
-        "hf://datasets/di-zhang-fdu/AIME_1983_2024/AIME_Dataset_1983_2024.csv"
-    )
-    df = df[df["Year"] < 2024]
-    df.to_csv(
-        "aime_1983_2023.csv",
-        index=False,
-    )
+    # df = pd.read_csv(
+    #     "hf://datasets/di-zhang-fdu/AIME_1983_2024/AIME_Dataset_1983_2024.csv"
+    # )
+    # df = df[df["Year"] < 2024]
+    # df.to_csv(
+    #     "aime_1983_2023.csv",
+    #     index=False,
+    # )
+
+    df = pd.read_csv("aime_1983_2023.csv")
 
     semaphore = asyncio.Semaphore(max_concurrent)
     lock = asyncio.Lock()
@@ -319,6 +359,7 @@ async def main(model_name: str, max_concurrent: int, max_attempts: int):
                 lock,
                 semaphore,
                 max_attempts,
+                majority_voting,
             )
         )
         for _, row in df.iterrows()
@@ -352,7 +393,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default="qwq-32b",
+        default="grok-3-mini-high",
         choices=list(CLIENTS.keys()),
         help="Model to use for generation",
     )
@@ -363,11 +404,19 @@ if __name__ == "__main__":
         help="Maximum number of concurrent API calls",
     )
     parser.add_argument(
+        "--majority-voting",
+        type=bool,
+        default=False,
+        help="Use majority voting to get the answer",
+    )
+    parser.add_argument(
         "--max-attempts",
         type=int,
-        default=64,
+        default=5,
         help="Maximum number of attempts to generate a correct response",
     )
     args = parser.parse_args()
 
-    asyncio.run(main(args.model, args.max_concurrent, args.max_attempts))
+    asyncio.run(
+        main(args.model, args.max_concurrent, args.max_attempts, args.majority_voting)
+    )

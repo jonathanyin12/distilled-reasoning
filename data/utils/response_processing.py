@@ -43,3 +43,24 @@ def process_claude_response(message) -> Tuple[str, str]:
         raise ValueError("Redacted thinking detected.")
 
     return thinking_block.thinking, text_block.text
+
+
+def process_grok_response(response) -> Tuple[str, str]:
+    """
+    Process Grok 3 message response.
+
+    Args:
+        message: The message response from Grok.
+
+    Returns:
+        A tuple containing the reasoning and answer.
+    """
+    reasoning = response.choices[0].message.reasoning_content
+    answer = response.choices[0].message.content
+
+    if not answer:
+        raise ValueError("No answer text found in Grok response")
+    if not reasoning:
+        raise ValueError("No reasoning text found in Grok response")
+
+    return reasoning, answer

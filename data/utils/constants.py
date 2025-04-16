@@ -14,7 +14,7 @@ The user will provide you with their attempt at a problem in the following forma
 # Attempt
 {attempt}
 
-Your job is to extract the answer from the attempt. Typically the answer will be boxed.
+Your job is to extract the answer from the attempt. Typically the answer will be boxed. In such cases, extract the answer from the boxed text.
 
 
 Output the following in JSON format:
@@ -43,19 +43,24 @@ Output your response in JSON format:
 
 
 # Client configuration
+FIREWORKS_CLIENT = AsyncOpenAI(
+    api_key=os.getenv("FIREWORKS_API_KEY"),
+    base_url="https://api.fireworks.ai/inference/v1",
+)
+XAI_CLIENT = AsyncOpenAI(
+    api_key=os.getenv("XAI_API_KEY"),
+    base_url="https://api.x.ai/v1",
+)
+
 CLIENTS = {
     "claude-3-7": AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY")),
-    "deepseek-r1": AsyncOpenAI(
-        api_key=os.getenv("FIREWORKS_API_KEY"),
-        base_url="https://api.fireworks.ai/inference/v1",
-    ),
-    "qwq-32b": AsyncOpenAI(
-        api_key=os.getenv("FIREWORKS_API_KEY"),
-        base_url="https://api.fireworks.ai/inference/v1",
-    ),
+    "deepseek-r1": FIREWORKS_CLIENT,
+    "qwq-32b": FIREWORKS_CLIENT,
+    "grok-3-mini-low": XAI_CLIENT,
+    "grok-3-mini-high": XAI_CLIENT,
 }
 
 OPENAI_CLIENT = AsyncAzureOpenAI(
     api_version="2025-01-01-preview",
-    azure_endpoint="https://jonathan-research.openai.azure.com",
+    azure_endpoint="https://jonathan-dev.openai.azure.com",
 )
