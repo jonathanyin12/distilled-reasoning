@@ -1,4 +1,11 @@
+import json
 from typing import Tuple
+
+from utils.constants import (
+    ANSWER_EXTRACTION_PROMPT,
+    GRADING_PROMPT,
+    OPENAI_CLIENT,
+)
 
 
 def process_think_tagged_output(output: str) -> Tuple[str, str]:
@@ -64,3 +71,67 @@ def process_grok_response(response) -> Tuple[str, str]:
         raise ValueError("No reasoning text found in Grok response")
 
     return reasoning, answer
+
+
+async def verify_answer_correctness(
+    question: str,
+    answer: str,
+    answer_attempt: str,
+) -> bool:
+    """
+    Verify the correctness of the answer.
+
+    Args:
+        question: The question to verify the answer for.
+        attempt: The attempt to verify the answer for.
+        solution: The correct answer to the question.
+
+    Returns:
+        A tuple containing the attempt answer, correctness of the answer, and the explanation.
+    """
+    response = await OPENAI_CLIENT.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": GRADING_PROMPT,
+            },
+            {
+                "role": "user",
+                "content": f"# Question\n{question}\n\n# Correct answer\n{answer}\n\n# Student's answer\n{answer_attempt}",
+            },
+        ],
+        response_format={"type": "json_object"},
+    )
+    json_response = json.loads(response.choices[0].message.content)
+    correct = json_response["correct"]
+    if isinstance(correct, bool):
+        return correct
+    else:
+        raise ValueError(f"Unexpected response format: {type(correct)}")
+
+
+async def extract_answer(attempt: str) -> str:
+    """
+    Extract the answer from a student's attempt at a problem.
+    """
+    response = await OPENAI_CLIENT.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": ANSWER_EXTRACTION_PROMPT,
+            },
+            {
+                "role": "user",
+                "content": f"# Attempt\n{attempt}",
+            },
+        ],
+        response_format={"type": "json_object"},
+    )
+    json_response = json.loads(response.choices[0].message.content)
+    extracted_answer = json_response["extracted_answer"]
+
+    extracted_answer = str(extracted_answer).strip()
+
+    return extracted_answer

@@ -1,6 +1,5 @@
 import asyncio
 import csv
-import json
 import os
 from collections import defaultdict
 from io import StringIO
@@ -11,86 +10,23 @@ import aiofiles
 import pandas as pd
 from tqdm import tqdm
 from utils.constants import (
-    ANSWER_EXTRACTION_PROMPT,
     CLIENTS,
-    GRADING_PROMPT,
-    OPENAI_CLIENT,
 )
 from utils.response_processing import (
+    extract_answer,
     process_claude_response,
     process_grok_response,
     process_think_tagged_output,
+    verify_answer_correctness,
 )
 
 # Change working directory to the script's directory
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 
-async def verify_answer_correctness(
-    question: str,
-    answer: str,
-    answer_attempt: str,
-) -> bool:
-    """
-    Verify the correctness of the answer.
-
-    Args:
-        question: The question to verify the answer for.
-        attempt: The attempt to verify the answer for.
-        solution: The correct answer to the question.
-
-    Returns:
-        A tuple containing the attempt answer, correctness of the answer, and the explanation.
-    """
-    response = await OPENAI_CLIENT.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {
-                "role": "system",
-                "content": GRADING_PROMPT,
-            },
-            {
-                "role": "user",
-                "content": f"# Question\n{question}\n\n# Correct answer\n{answer}\n\n# Student's answer\n{answer_attempt}",
-            },
-        ],
-        response_format={"type": "json_object"},
-    )
-    json_response = json.loads(response.choices[0].message.content)
-    correct = json_response["correct"]
-    if isinstance(correct, bool):
-        return correct
-    else:
-        raise ValueError(f"Unexpected response format: {type(correct)}")
-
-
-async def extract_answer(attempt: str) -> str:
-    """
-    Extract the answer from a student's attempt at a problem.
-    """
-    response = await OPENAI_CLIENT.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {
-                "role": "system",
-                "content": ANSWER_EXTRACTION_PROMPT,
-            },
-            {
-                "role": "user",
-                "content": f"# Attempt\n{attempt}",
-            },
-        ],
-        response_format={"type": "json_object"},
-    )
-    json_response = json.loads(response.choices[0].message.content)
-    extracted_answer = json_response["extracted_answer"]
-
-    extracted_answer = str(extracted_answer).strip()
-
-    return extracted_answer
-
-
-async def generate_response(question: str, model: str) -> Tuple[str, str]:
+async def generate_response(
+    question: str, model: str, max_tokens: int = 32768
+) -> Tuple[str, str]:
     """
     Generate a response from the model.
 
@@ -111,20 +47,20 @@ async def generate_response(question: str, model: str) -> Tuple[str, str]:
     if model in ["deepseek-r1", "qwq-32b"]:
         question = (
             question
-            + "\n\nPlease reason step by step, and put your final answer within \boxed{}."
+            + "\n\nPlease reason step by step, and put your final answer within \\boxed{}."
         )
     elif "grok-3-mini" in model:
         question = (
             question
-            + "\n\nPlease reason step by step, and put your final answer within \boxed{}. Your final answer should not contain leading zeros."
+            + "\n\nPlease reason step by step, and put your final answer within \\boxed{}. Your final answer should not contain leading zeros."
         )
 
     match model:
         case "claude-3-7":
             message = await client.messages.create(
                 model="claude-3-7-sonnet-20250219",
-                max_tokens=128000,
-                thinking={"type": "enabled", "budget_tokens": 64000},
+                max_completion_tokens=max_tokens,
+                thinking={"type": "enabled", "budget_tokens": max_tokens},
                 messages=[
                     {
                         "role": "user",
@@ -139,7 +75,7 @@ async def generate_response(question: str, model: str) -> Tuple[str, str]:
             response = await client.chat.completions.create(
                 messages=[{"role": "user", "content": question}],
                 temperature=0.6,
-                max_tokens=128000,
+                max_completion_tokens=max_tokens,
                 model="accounts/fireworks/models/deepseek-r1",
             )
             return process_think_tagged_output(response.choices[0].message.content)
@@ -149,26 +85,26 @@ async def generate_response(question: str, model: str) -> Tuple[str, str]:
                 messages=[{"role": "user", "content": question}],
                 temperature=0.6,
                 top_p=0.95,
-                max_tokens=128000,
+                max_completion_tokens=max_tokens,
                 model="accounts/fireworks/models/qwq-32b",
             )
             return process_think_tagged_output(response.choices[0].message.content)
-        case "grok-3-mini-low":
-            response = await client.chat.completions.create(
-                messages=[{"role": "user", "content": question}],
-                reasoning_effort="low",
-                model="grok-3-mini",
-                max_completion_tokens=32768,
-            )
-            if response.choices[0].finish_reason == "length":
-                raise ValueError("Terminated due to length limit")
-            return process_grok_response(response)
+        # case "grok-3-mini-low": # ISSUE: has leading zeros in the answer
+        #     response = await client.chat.completions.create(
+        #         messages=[{"role": "user", "content": question}],
+        #         reasoning_effort="low",
+        #         model="grok-3-mini",
+        #         max_completion_tokens=32768,
+        #     )
+        #     if response.choices[0].finish_reason == "length":
+        #         raise ValueError("Terminated due to length limit")
+        #     return process_grok_response(response)
         case "grok-3-mini-high":
             response = await client.chat.completions.create(
                 messages=[{"role": "user", "content": question}],
                 reasoning_effort="high",
                 model="grok-3-mini",
-                max_completion_tokens=32768,
+                max_completion_tokens=max_tokens,
             )
             if response.choices[0].finish_reason == "length":
                 raise ValueError("Terminated due to length limit")
@@ -183,6 +119,7 @@ async def generate_correct_response(
     model: str,
     max_attempts: int = 16,
     majority_voting: bool = False,
+    max_tokens: int = 32768,
 ) -> Tuple[str, str, bool, str]:
     """
     Generate a correct response from the model.
@@ -202,7 +139,7 @@ async def generate_correct_response(
     responses = []
     for attempt_num in range(max_attempts):
         try:
-            reasoning, attempt = await generate_response(question, model)
+            reasoning, attempt = await generate_response(question, model, max_tokens)
             answer_attempt = await extract_answer(attempt)
             correct = await verify_answer_correctness(
                 question=question, answer=answer, answer_attempt=answer_attempt
@@ -266,6 +203,7 @@ async def process_question(
     api_semaphore: asyncio.Semaphore,
     max_attempts: int,
     majority_voting: bool,
+    max_tokens: int,
 ) -> bool:
     """Process a single question with semaphore control."""
     async with api_semaphore:
@@ -284,6 +222,7 @@ async def process_question(
                 model_name,
                 max_attempts,
                 majority_voting,
+                max_tokens,
             )
 
             async with file_lock:  # Only one task can write at a time
@@ -319,10 +258,11 @@ async def main(
     max_concurrent: int,
     max_attempts: int,
     majority_voting: bool,
+    max_tokens: int,
 ):
     """Main function to process all questions."""
     os.makedirs("results", exist_ok=True)
-    output_file = f"aime_1983_2023_{model_name}_traces.csv"
+    output_file = f"aime_1983_2023_{model_name}_traces_{max_tokens}.csv"
 
     # Initialize or load existing progress
     processed_indices = set()
@@ -360,6 +300,7 @@ async def main(
                 semaphore,
                 max_attempts,
                 majority_voting,
+                max_tokens,
             )
         )
         for _, row in df.iterrows()
@@ -406,8 +347,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--majority-voting",
         type=bool,
-        default=False,
+        default=True,
         help="Use majority voting to get the answer",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=32768,
+        help="Maximum number of tokens to generate",
     )
     parser.add_argument(
         "--max-attempts",
@@ -418,5 +365,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     asyncio.run(
-        main(args.model, args.max_concurrent, args.max_attempts, args.majority_voting)
+        main(
+            args.model,
+            args.max_concurrent,
+            args.max_attempts,
+            args.majority_voting,
+            args.max_tokens,
+        )
     )
