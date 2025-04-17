@@ -1,11 +1,7 @@
 import json
 from typing import Tuple
 
-from utils.constants import (
-    ANSWER_EXTRACTION_PROMPT,
-    GRADING_PROMPT,
-    OPENAI_CLIENT,
-)
+from data.utils.clients import OPENAI_CLIENT
 
 
 def process_think_tagged_output(output: str) -> Tuple[str, str]:
@@ -23,7 +19,7 @@ def process_think_tagged_output(output: str) -> Tuple[str, str]:
         reasoning = output.split("</think>")[0]
         answer = output.split("</think>")[1]
     else:
-        raise ValueError(f"Unexpected output format. Output: {output}")
+        raise ValueError("Unexpected output format. Closing think tag not found.")
     return reasoning.strip(), answer.strip()
 
 
@@ -73,6 +69,25 @@ def process_grok_response(response) -> Tuple[str, str]:
     return reasoning, answer
 
 
+GRADING_PROMPT = """You are an AI assistant tasked with grading a student's answer to a question. Your job is to judge whether the attempt is correct by comparing it with the correct answer.
+
+The user will provide the question, the student's answer and the correct answer in the following format:
+
+# Question
+{question}
+
+# Correct answer
+{answer}
+
+# Student's answer
+{attempt}
+
+Output your response in JSON format:
+{
+    "correct": <boolean indicating if the student's answer is correct>
+}"""
+
+
 async def verify_answer_correctness(
     question: str,
     answer: str,
@@ -109,6 +124,22 @@ async def verify_answer_correctness(
         return correct
     else:
         raise ValueError(f"Unexpected response format: {type(correct)}")
+
+
+ANSWER_EXTRACTION_PROMPT = """You are an AI assistant tasked with extracting the answer from a student's attempt at a problem. 
+
+The user will provide you with their attempt at a problem in the following format:
+
+# Attempt
+{attempt}
+
+Your job is to extract the answer from the attempt. Typically the answer will be boxed. In such cases, extract the answer from the boxed text.
+
+
+Output the following in JSON format:
+{
+    "extracted_answer": <the extracted answer>
+}"""
 
 
 async def extract_answer(attempt: str) -> str:

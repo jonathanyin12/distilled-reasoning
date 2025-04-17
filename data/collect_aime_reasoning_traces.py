@@ -9,9 +9,7 @@ from typing import Tuple
 import aiofiles
 import pandas as pd
 from tqdm import tqdm
-from utils.constants import (
-    CLIENTS,
-)
+from utils.clients import CLIENTS
 from utils.response_processing import (
     extract_answer,
     process_claude_response,
@@ -44,7 +42,7 @@ async def generate_response(
     client = CLIENTS[model]
 
     # Format math questions for applicable models
-    if model in ["deepseek-r1", "qwq-32b"]:
+    if "deepseek" in model or "qwq" in model:
         question = (
             question
             + "\n\nPlease reason step by step, and put your final answer within \\boxed{}."
@@ -76,7 +74,31 @@ async def generate_response(
                 messages=[{"role": "user", "content": question}],
                 temperature=0.6,
                 max_completion_tokens=max_tokens,
-                model="accounts/fireworks/models/deepseek-r1",
+                model="accounts/fireworks/models/deepseek-r1-basic",
+            )
+            return process_think_tagged_output(response.choices[0].message.content)
+        case "deepseek-r1-distill-qwen-14b":
+            response = await client.chat.completions.create(
+                messages=[{"role": "user", "content": question}],
+                temperature=0.6,
+                max_completion_tokens=max_tokens,
+                model="accounts/fireworks/models/deepseek-r1-distill-qwen-14b",
+            )
+            return process_think_tagged_output(response.choices[0].message.content)
+        case "deepseek-r1-distill-qwen-7b":
+            response = await client.chat.completions.create(
+                messages=[{"role": "user", "content": question}],
+                temperature=0.6,
+                max_completion_tokens=max_tokens,
+                model="accounts/fireworks/models/deepseek-r1-distill-qwen-7b",
+            )
+            return process_think_tagged_output(response.choices[0].message.content)
+        case "deepseek-r1-distill-qwen-1.5b":
+            response = await client.chat.completions.create(
+                messages=[{"role": "user", "content": question}],
+                temperature=0.6,
+                max_completion_tokens=max_tokens,
+                model="accounts/fireworks/models/deepseek-r1-distill-qwen-1.5b",
             )
             return process_think_tagged_output(response.choices[0].message.content)
 
@@ -164,7 +186,6 @@ async def generate_correct_response(
             print(f"Attempt {attempt_num + 1} failed with error: {str(e)}")
             continue
 
-    # If we've exhausted all attempts, return the best response (first one as fallback)
     if not responses:
         raise ValueError(
             f"Failed to generate any valid responses after {max_attempts} attempts"
@@ -174,7 +195,7 @@ async def generate_correct_response(
             f"Failed to generate any correct responses after {max_attempts} attempts"
         )
     else:
-        # Implement majority voting mechanism based on attempt_answer
+        # Majority voting mechanism based on attempt_answer
         answer_counts = defaultdict(int)
         for response in responses:
             answer_counts[response["answer_attempt"]] += 1
@@ -182,7 +203,7 @@ async def generate_correct_response(
         # Find the most common answer
         majority_answer = max(answer_counts.items(), key=lambda x: x[1])[0]
         print(
-            f"Used majority voting to get answer. Answers: {answer_counts}. Majority answer: {majority_answer}"
+            f"Used majority voting. Answers: {answer_counts}. Majority answer: {majority_answer}"
         )
         # Find the first response with the majority answer
         for response in responses:
@@ -262,7 +283,9 @@ async def main(
 ):
     """Main function to process all questions."""
     os.makedirs("results", exist_ok=True)
-    output_file = f"aime_1983_2023_{model_name}_traces_{max_tokens}.csv"
+    output_file = (
+        f"reasoning_traces/aime_1983_2023_{model_name}_traces_{max_tokens}.csv"
+    )
 
     # Initialize or load existing progress
     processed_indices = set()
@@ -277,16 +300,9 @@ async def main(
         async with aiofiles.open(output_file, "w") as f:
             await f.write(headers)
 
-    # df = pd.read_csv(
-    #     "hf://datasets/di-zhang-fdu/AIME_1983_2024/AIME_Dataset_1983_2024.csv"
-    # )
-    # df = df[df["Year"] < 2024]
-    # df.to_csv(
-    #     "aime_1983_2023.csv",
-    #     index=False,
-    # )
-
-    df = pd.read_csv("aime_1983_2023.csv")
+    aime_df = pd.read_parquet(
+        "hf://datasets/jonathanyin/AIME_1983_2023/data/train-00000-of-00001.parquet"
+    )
 
     semaphore = asyncio.Semaphore(max_concurrent)
     lock = asyncio.Lock()
@@ -303,7 +319,7 @@ async def main(
                 max_tokens,
             )
         )
-        for _, row in df.iterrows()
+        for _, row in aime_df.iterrows()
         if row["ID"] not in processed_indices
     ]
 
@@ -334,7 +350,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default="grok-3-mini-high",
+        default="deepseek-r1",
         choices=list(CLIENTS.keys()),
         help="Model to use for generation",
     )
@@ -347,7 +363,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--majority-voting",
         type=bool,
-        default=True,
+        default=False,
         help="Use majority voting to get the answer",
     )
     parser.add_argument(
