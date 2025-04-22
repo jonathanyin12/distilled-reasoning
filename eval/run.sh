@@ -72,7 +72,7 @@ while [[ $JOB_INDEX -lt $MAX_JOBS ]]; do
 
     # Run the command in the background, ensuring it only sees the assigned GPU
     echo "Running command: CUDA_VISIBLE_DEVICES=$GPU_ID $COMMAND"
-    HF_HUB_DISABLE_CACHE=1 CUDA_VISIBLE_DEVICES=$GPU_ID $COMMAND &
+    CUDA_VISIBLE_DEVICES=$GPU_ID $COMMAND &
     PID=$!
     PIDS+=("$PID")
     echo "  Job $CURRENT_JOB_NUM started with PID $PID"
