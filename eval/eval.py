@@ -129,8 +129,6 @@ def main():
         f"=== All {args.num_runs} runs completed in {(script_end_time - script_start_time).total_seconds():.2f} seconds ==="
     )
 
-    aggregate_results(args.output_dir, args.model)
-
 
 if __name__ == "__main__":
     main()

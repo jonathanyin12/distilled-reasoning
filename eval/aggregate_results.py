@@ -302,4 +302,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     results_dir = args.results_dir
     tokenizer_model = args.tokenizer_model
-    main()
+    main(results_dir, tokenizer_model)

@@ -141,3 +141,8 @@ done
 echo "All $MAX_JOBS jobs have been launched. Waiting for any remaining jobs to finish..."
 wait # Waits for all background jobs started in this shell
 echo "All jobs completed."
+
+# --- Aggregate Results ---
+echo "Aggregating results..."
+python aggregate_results.py "${OUTPUT_DIR}" --tokenizer_model "${MODEL_NAME}"
+echo "Results aggregation complete."
