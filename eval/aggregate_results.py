@@ -84,7 +84,11 @@ def process_run(run_info: dict, tokenizer: AutoTokenizer):
 
                     # This assumes that the metric is the extractive match metric
                     correct = row["metrics"]["extractive_match"] == 1
-                    extracted_answer = row["specifics"]["extracted_predictions"][0]
+
+                    if len(row["specifics"]["extracted_predictions"]) > 0:
+                        extracted_answer = row["specifics"]["extracted_predictions"][0]
+                    else:
+                        extracted_answer = None
 
                     full_history = input_prompt + output
                     num_tokens = len(tokenizer.tokenize(full_history))
