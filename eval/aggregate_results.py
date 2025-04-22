@@ -176,13 +176,19 @@ def aggregate_results(runs: dict, tokenizer: AutoTokenizer):
     reference_run = next(iter(all_results.values()))["metadata"]
     seeds = {result["metadata"]["seed"] for result in all_results.values()}
     tasks = reference_run["task_names"]
-
+    eval_time = np.mean(
+        [
+            result["metadata"]["end_time"] - result["metadata"]["start_time"]
+            for result in all_results.values()
+        ]
+    )
     eval_result = {
         "tasks": tasks,
         "num_runs": len(all_results),
         "model_name": reference_run["model_name"],
         "generation_parameters": reference_run["generation_parameters"],
         "seeds": list(seeds),
+        "average_evaluation_seconds": eval_time,
     }
 
     for task in tasks:
