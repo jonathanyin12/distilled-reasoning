@@ -73,6 +73,7 @@ async def generate_response(
             response = await client.chat.completions.create(
                 messages=[{"role": "user", "content": question}],
                 temperature=0.6,
+                top_p=0.95,
                 max_completion_tokens=max_tokens,
                 model="accounts/fireworks/models/deepseek-r1-basic",
             )
@@ -81,6 +82,7 @@ async def generate_response(
             response = await client.chat.completions.create(
                 messages=[{"role": "user", "content": question}],
                 temperature=0.6,
+                top_p=0.95,
                 max_completion_tokens=max_tokens,
                 model="accounts/fireworks/models/deepseek-r1-distill-qwen-14b",
             )
@@ -89,6 +91,7 @@ async def generate_response(
             response = await client.chat.completions.create(
                 messages=[{"role": "user", "content": question}],
                 temperature=0.6,
+                top_p=0.95,
                 max_completion_tokens=max_tokens,
                 model="accounts/fireworks/models/deepseek-r1-distill-qwen-7b",
             )
@@ -97,6 +100,7 @@ async def generate_response(
             response = await client.chat.completions.create(
                 messages=[{"role": "user", "content": question}],
                 temperature=0.6,
+                top_p=0.95,
                 max_completion_tokens=max_tokens,
                 model="accounts/fireworks/models/deepseek-r1-distill-qwen-1.5b",
             )

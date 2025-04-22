@@ -1,7 +1,7 @@
 import json
 from typing import Tuple
 
-from data.utils.clients import OPENAI_CLIENT
+from utils.clients import OPENAI_CLIENT
 
 
 def process_think_tagged_output(output: str) -> Tuple[str, str]:
