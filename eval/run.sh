@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # --- Configuration for eval.py ---
-TASK="lighteval|aime24|0|0"
+TASK="lighteval|aime24|0|0,lighteval|aime25|0|0"
 MODEL_NAME=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
 TEMPERATURE=0.6
 TOP_P=0.95

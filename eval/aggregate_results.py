@@ -237,23 +237,7 @@ def aggregate_results(runs: dict, tokenizer: AutoTokenizer):
     return eval_result
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "results_dir",
-        type=str,
-        help="Directory where lighteval files are stored",
-    )
-    parser.add_argument(
-        "--tokenizer_model",
-        default="Qwen/Qwen2.5-32B-Instruct",
-        type=str,
-        help="Tokenizer to use for aggregation",
-    )
-
-    args = parser.parse_args()
-    results_dir = args.results_dir
-    tokenizer_model = args.tokenizer_model
+def main(results_dir: str, tokenizer_model: str):
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_model)
 
     # Get all the parquet files in the results directory
@@ -302,4 +286,20 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "results_dir",
+        type=str,
+        help="Directory where lighteval files are stored",
+    )
+    parser.add_argument(
+        "--tokenizer_model",
+        default="Qwen/Qwen2.5-32B-Instruct",
+        type=str,
+        help="Tokenizer to use for aggregation",
+    )
+
+    args = parser.parse_args()
+    results_dir = args.results_dir
+    tokenizer_model = args.tokenizer_model
     main()

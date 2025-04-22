@@ -2,6 +2,7 @@ import argparse
 import os
 from datetime import datetime
 
+from aggregate_results import aggregate_results
 from lighteval.logging.evaluation_tracker import EvaluationTracker
 from lighteval.models.model_input import GenerationParameters
 from lighteval.models.vllm.vllm_model import VLLMModelConfig
@@ -127,6 +128,8 @@ def main():
     print(
         f"=== All {args.num_runs} runs completed in {(script_end_time - script_start_time).total_seconds():.2f} seconds ==="
     )
+
+    aggregate_results(args.output_dir, args.model)
 
 
 if __name__ == "__main__":
