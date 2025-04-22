@@ -2,7 +2,6 @@ import argparse
 import os
 from datetime import datetime
 
-from aggregate_results import aggregate_results
 from lighteval.logging.evaluation_tracker import EvaluationTracker
 from lighteval.models.model_input import GenerationParameters
 from lighteval.models.vllm.vllm_model import VLLMModelConfig
@@ -57,7 +56,6 @@ def main():
         with open(args.system_prompt, "r") as f:
             system_prompt = f.read()
 
-    output_dir = args.output_dir.replace("/", "_")
     for i in range(args.num_runs):
         run_start_time = datetime.now()
         current_seed = args.seed + i
@@ -65,7 +63,7 @@ def main():
 
         env_config = EnvConfig()
         evaluation_tracker = EvaluationTracker(
-            output_dir=output_dir,
+            output_dir=args.output_dir,
             save_details=True,
             push_to_hub=False,
             push_to_tensorboard=False,

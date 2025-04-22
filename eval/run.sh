@@ -8,7 +8,7 @@ TOP_P=0.95
 MAX_NEW_TOKENS=32768
 MAX_MODEL_LENGTH=32768
 USE_CHAT_TEMPLATE="--use_chat_template" # Set to "" to disable
-OUTPUT_DIR=$MODEL_NAME
+OUTPUT_DIR=${MODEL_NAME//\//_}
 SEED=0
 
 # --- Script Parameters ---
