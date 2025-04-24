@@ -268,7 +268,7 @@ def main(results_dir: str, tokenizer_model: str):
     runs = {}
     for result_filepath in results_files:
         filename = os.path.basename(result_filepath)
-        key = filename.split("results_")[1].split(".")[0]
+        key = filename.split("results_")[1].split(".json")[0]
 
         # Find the parquet file that contains the key in its filename
         matching_details_filepaths = []

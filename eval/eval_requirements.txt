@@ -2,3 +2,5 @@ lighteval[math]
 pydantic
 vllm==0.7.3
 ray
+huggingface-hub[hf_transfer]
+more_itertools

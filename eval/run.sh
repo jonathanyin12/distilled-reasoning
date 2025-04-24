@@ -8,7 +8,7 @@ TOP_P=0.95
 MAX_NEW_TOKENS=32768
 MAX_MODEL_LENGTH=32768
 USE_CHAT_TEMPLATE="--use_chat_template" # Set to "" to disable
-OUTPUT_DIR=${MODEL_NAME//\//_}
+OUTPUT_DIR=$(basename "$MODEL_NAME")
 SEED=0
 
 # --- Script Parameters ---
@@ -32,6 +32,20 @@ if [[ $NUM_GPUS -eq 0 ]]; then
 fi
 
 echo "Detected $NUM_GPUS allocated GPUs: ${ALLOCATED_GPUS[*]}"
+
+# --- Pre-cache Hugging Face model ---
+echo "--- Pre-caching Hugging Face model ---"
+FIRST_GPU=${ALLOCATED_GPUS[0]}
+echo "Model to cache: $MODEL_NAME"
+echo "Assigning cache process to GPU: $FIRST_GPU"
+CUDA_VISIBLE_DEVICES=$FIRST_GPU python cache_model.py "$MODEL_NAME"
+# Check if caching was successful
+if [[ $? -ne 0 ]]; then
+  echo "Error during model caching. Exiting."
+  exit 1
+fi
+echo "--- Caching finished ---"
+echo "" # Add a newline for better readability
 
 # --- Job Tracking ---
 declare -A PID_TO_GPU # Associative array: PID -> GPU_ID
