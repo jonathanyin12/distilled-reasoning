@@ -172,4 +172,8 @@ cython_debug/
 
 
 data/reasoning_traces/
-eval/results/
+eval/AIME_results/
+eval/GPQA_results/
+eval/old_results/
+
+figures/

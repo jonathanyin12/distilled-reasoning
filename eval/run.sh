@@ -14,6 +14,10 @@ SEED=0
 # --- Script Parameters ---
 MAX_JOBS=16
 
+
+# --- Enable Hugging Face Transfer ---
+export HF_HUB_ENABLE_HF_TRANSFER=1
+
 # --- Slurm GPU Detection ---
 # Get the list of assigned GPUs from Slurm (or environment)
 if [[ -z "$CUDA_VISIBLE_DEVICES" ]]; then

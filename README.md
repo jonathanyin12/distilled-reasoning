@@ -1,4 +1,4 @@
-# distilled-reasoning
+# Reasoning with Less: Distilling Reasoning Models with Small Datasets
 
 ## Setup
 
