@@ -1,0 +1,5 @@
+transformers
+trl
+huggingface-hub[hf_transfer]
+wandb
+liger-kernel
